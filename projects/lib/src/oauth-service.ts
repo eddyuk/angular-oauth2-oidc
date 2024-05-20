@@ -110,6 +110,7 @@ export class OAuthService extends AuthConfig implements OnDestroy {
 
   protected saveNoncesInLocalStorage = false;
   private document: Document;
+  private windowInstance; // in case of token refresh in popup / tab used as handle to close the window after refresh routine is over
 
   constructor(
     protected ngZone: NgZone,
@@ -1068,30 +1069,18 @@ export class OAuthService extends AuthConfig implements OnDestroy {
       throw new Error('silent refresh is not supported on this platform');
     }
 
-    const existingIframe = this.document.getElementById(
-      this.silentRefreshIFrameName
-    );
-
-    if (existingIframe) {
-      this.document.body.removeChild(existingIframe);
-    }
-
     this.silentRefreshSubject = claims['sub'];
-
-    const iframe = this.document.createElement('iframe');
-    iframe.id = this.silentRefreshIFrameName;
 
     this.setupSilentRefreshEventListener();
 
     const redirectUri = this.silentRefreshRedirectUri || this.redirectUri;
     this.createLoginUrl(null, null, redirectUri, noPrompt, params).then(
       (url) => {
-        iframe.setAttribute('src', url);
-
-        if (!this.silentRefreshShowIFrame) {
-          iframe.style['display'] = 'none';
+        if(this.silentRefreshDestination === 'iframe') {
+          this.refreshInIFrame(url);
+        } else {
+          this.windowInstance = this.openPopupOrTab(url);
         }
-        this.document.body.appendChild(iframe);
       }
     );
 
@@ -1110,6 +1099,7 @@ export class OAuthService extends AuthConfig implements OnDestroy {
     return race([errors, success, timeout])
       .pipe(
         map((e) => {
+          this.tryCloseWindowInstance();
           if (e instanceof OAuthErrorEvent) {
             if (e.type === 'silent_refresh_timeout') {
               this.eventsSubject.next(e);
@@ -2889,6 +2879,44 @@ export class OAuthService extends AuthConfig implements OnDestroy {
     // as setting an empty hash to an empty string adds # to the URL
     if (location.hash != '') {
       location.hash = '';
+    }
+  }
+
+  /**
+   * Handling token refresh in iframe
+   */
+  private refreshInIFrame(url) {
+    const existingIframe = this.document.getElementById(
+      this.silentRefreshIFrameName
+    );
+
+    if (existingIframe) {
+      this.document.body.removeChild(existingIframe);
+    }
+
+    const iframe = this.document.createElement('iframe');
+    iframe.id = this.silentRefreshIFrameName;
+
+    iframe.setAttribute('src', url);
+
+    if (!this.silentRefreshShowIFrame) {
+      iframe.style['display'] = 'none';
+    }
+    this.document.body.appendChild(iframe);
+  }
+
+  private openPopupOrTab(url) {
+      var windowSize = null;
+      this.tryCloseWindowInstance();
+      if (this.silentRefreshDestination === 'popup') {
+          windowSize = 'width=300,height=300'; // that will indicate browser to open in new tab and not popup
+      }
+      return window.open(url, 'Refreshing token - do not close', windowSize); // if width/hegith not provided will open a new tab
+  }
+
+  private tryCloseWindowInstance() {
+    if (this.windowInstance && !this.windowInstance.closed) {
+      this.windowInstance.close();
     }
   }
 }

@@ -103,6 +103,13 @@ export class AuthConfig {
   public silentRefreshMessagePrefix? = '';
 
   /**
+   * Set this to popup or tab if you want the token refresh
+   * to happen in other destination than iframe. Set iframe
+   * to preserve original behaviour.
+   */
+  public silentRefreshDestination?: 'iframe' | 'popup' | 'tab' = 'iframe';
+
+  /**
    * Set this to true to display the iframe used for
    * silent refresh for debugging.
    */
